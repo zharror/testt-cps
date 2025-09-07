@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test CPS - Controller Support + Rumble</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      height: 100vh;
+      margin: 0;
+      background: #111;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      transition: transform 0.1s;
+    }
+    h1 { margin-bottom: 10px; }
+    #click-area {
+      width: 400px;
+      height: 250px;
+      background: #333;
+      border: 4px solid #fff;
+      border-radius: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      margin: 25px 0;
+      font-size: 26px;
+      font-weight: bold;
+    }
+    .shake { animation: shake 0.2s; }
+    @keyframes shake {
+      0% { transform: translate(2px, 2px) rotate(0deg); }
+      20% { transform: translate(-2px, -3px) rotate(-1deg); }
+      40% { transform: translate(-4px, 2px) rotate(1deg); }
+      60% { transform: translate(4px, 3px) rotate(0deg); }
+      80% { transform: translate(2px, -2px) rotate(1deg); }
+      100% { transform: translate(0, 0) rotate(0deg); }
+    }
+    .body-shake { animation: bodyShake 0.3s; }
+    @keyframes bodyShake {
+      0% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      50% { transform: translateX(5px); }
+      75% { transform: translateX(-5px); }
+      100% { transform: translateX(0); }
+    }
+    #score, #timer, #highscore, #controller-status {
+      font-size: 22px;
+      margin: 6px 0;
+    }
+    #result {
+      margin-top: 15px;
+      font-size: 26px;
+      font-weight: bold;
+    }
+    .win { color: limegreen; }
+    .lose { color: red; }
+    .connected { color: limegreen; }
+    .disconnected { color: orange; }
+    button {
+      background: limegreen;
+      border: none;
+      padding: 15px 30px;
+      font-size: 20px;
+      font-weight: bold;
+      border-radius: 12px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover { background: green; }
+  </style>
+</head>
+<body>
+  <h1>Test CPS 🎮</h1>
+  <div id="timer">Waktu: 10</div>
+  <div id="score">Klik: 0</div>
+  <div id="highscore">Rekor Tertinggi: 0</div>
+  <div id="controller-status" class="disconnected">Controller: ❌ Tidak terhubung</div>
+  <div id="click-area">Klik / Spasi / Controller A</div>
+  <button onclick="restart()">Mulai Ulang</button>
+  <div id="result"></div>
+
+  <!-- Suara -->
+  <audio id="clickSound" src="https://actions.google.com/sounds/v1/office/computer_keyboard_typing_fast.ogg"></audio>
+  <audio id="winSound" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg"></audio>
+  <audio id="loseSound" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
+
+  <script>
+    let clicks = 0;
+    let duration = 10; 
+    let time = duration;
+    let timerId;
+    let gameActive = false;
+
+    const scoreDisplay = document.getElementById("score");
+    const timerDisplay = document.getElementById("timer");
+    const clickArea = document.getElementById("click-area");
+    const resultDisplay = document.getElementById("result");
+    const clickSound = document.getElementById("clickSound");
+    const winSound = document.getElementById("winSound");
+    const loseSound = document.getElementById("loseSound");
+    const highscoreDisplay = document.getElementById("highscore");
+    const controllerStatus = document.getElementById("controller-status");
+
+    let highscore = localStorage.getItem("highscore") || 0;
+    highscoreDisplay.textContent = "Rekor Tertinggi: " + highscore;
+
+    function startGame() {
+      if (gameActive) return;
+      gameActive = true;
+      clicks = 0;
+      time = duration;
+      scoreDisplay.textContent = "Klik: 0";
+      timerDisplay.textContent = "Waktu: " + time;
+      resultDisplay.textContent = "";
+
+      timerId = setInterval(() => {
+        time--;
+        timerDisplay.textContent = "Waktu: " + time;
+        if (time <= 0) endGame();
+      }, 1000);
+    }
+
+    function endGame() {
+      clearInterval(timerId);
+      gameActive = false;
+      if (clicks < 10) {
+        resultDisplay.innerHTML = "❌ Kalah! Klik Anda hanya " + clicks;
+        resultDisplay.className = "lose";
+        loseSound.play();
+        rumbleAll(200, 1.0, 200); // getar kalah
+      } else {
+        let cps = (clicks / duration).toFixed(2);
+        resultDisplay.innerHTML = "✅ Menang! Skor: " + clicks + " klik (" + cps + " CPS)";
+        resultDisplay.className = "win";
+        winSound.play();
+        rumbleAll(500, 0.5, 500); // getar menang
+      }
+      if (clicks > highscore) {
+        highscore = clicks;
+        localStorage.setItem("highscore", highscore);
+        highscoreDisplay.textContent = "Rekor Tertinggi: " + highscore;
+      }
+    }
+
+    function registerClick() {
+      if (!gameActive) startGame();
+      if (gameActive) {
+        clicks++;
+        scoreDisplay.textContent = "Klik: " + clicks;
+        clickSound.currentTime = 0;
+        clickSound.play();
+        clickArea.classList.add("shake");
+        setTimeout(() => clickArea.classList.remove("shake"), 200);
+        if (navigator.vibrate) navigator.vibrate(100);
+        else {
+          document.body.classList.add("body-shake");
+          setTimeout(() => document.body.classList.remove("body-shake"), 300);
+        }
+        rumbleAll(100, 0.8, 100); // getar tiap klik
+      }
+    }
+
+    clickArea.addEventListener("click", registerClick);
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Space") registerClick();
+    });
+
+    function restart() {
+      clearInterval(timerId);
+      gameActive = false;
+      clicks = 0;
+      time = duration;
+      scoreDisplay.textContent = "Klik: 0";
+      timerDisplay.textContent = "Waktu: " + time;
+      resultDisplay.textContent = "";
+    }
+
+    // 🎮 Controller (Gamepad API)
+    let controllers = {};
+
+    function connectHandler(e) {
+      addGamepad(e.gamepad);
+      controllerStatus.textContent = "Controller: ✅ Terhubung (" + e.gamepad.id + ")";
+      controllerStatus.className = "connected";
+    }
+
+    function disconnectHandler(e) {
+      delete controllers[e.gamepad.index];
+      controllerStatus.textContent = "Controller: ❌ Tidak terhubung";
+      controllerStatus.className = "disconnected";
+    }
+
+    function addGamepad(gamepad) {
+      controllers[gamepad.index] = gamepad;
+      requestAnimationFrame(updateStatus);
+    }
+
+    function updateStatus() {
+      scangamepads();
+      for (let j in controllers) {
+        let controller = controllers[j];
+        if (controller.buttons[0].pressed) registerClick();   // A → klik
+        if (controller.buttons[1].pressed) restart();        // B → restart
+        if (controller.buttons[9].pressed) restart();        // Start → restart
+        if (Math.abs(controller.axes[0]) > 0.5) {
+          document.body.classList.add("body-shake");
+          setTimeout(() => document.body.classList.remove("body-shake"), 300);
+        }
+      }
+      requestAnimationFrame(updateStatus);
+    }
+
+    function scangamepads() {
+      let gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (let i = 0; i < gamepads.length; i++) {
+        if (gamepads[i]) {
+          if (!(gamepads[i].index in controllers)) addGamepad(gamepads[i]);
+          else controllers[gamepads[i].index] = gamepads[i];
+        }
+      }
+    }
+
+    // Fungsi rumble semua controller
+    function rumbleAll(duration, strong, weak) {
+      for (let j in controllers) {
+        let gamepad = controllers[j];
+        if (gamepad && gamepad.vibrationActuator) {
+          gamepad.vibrationActuator.playEffect("dual-rumble", {
+            startDelay: 0,
+            duration: duration,
+            weakMagnitude: weak / 1000,
+            strongMagnitude: strong
+          });
+        }
+      }
+    }
+
+    window.addEventListener("gamepadconnected", connectHandler);
+    window.addEventListener("gamepaddisconnected", disconnectHandler);
+  </script>
+</body>
+</html>
